@@ -1,0 +1,15 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+outputs/
+*.tif
+*.shp
+*.dbf
+*.prj
+*.shx
+inst/sentinel_data/
+*.zip
+.httr-oauth
+.DS_Store
+.quarto

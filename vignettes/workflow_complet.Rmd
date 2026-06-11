@@ -1,0 +1,288 @@
+---
+title: "Workflow complet — cropYieldForest"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Workflow complet cropYieldForest}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  eval    = FALSE,
+  echo    = TRUE,
+  comment = "#>"
+)
+```
+
+# cropYieldForest — Prédiction du rendement agricole
+
+Ce package R prédit le rendement des cultures à l'échelle de la parcelle
+en combinant des indices de végétation MODIS/Sentinel-2, des données
+météorologiques ERA5 et un modèle Random Forest.
+
+## Installation
+
+```{r install}
+# Depuis GitHub
+devtools::install_github("votreusername/cropYieldForest")
+
+# Ou en mode développement (depuis le dossier local)
+devtools::install()
+# ou : devtools::load_all()
+```
+
+## Dépendances
+
+```{r deps}
+install.packages(c(
+  "terra", "sf", "randomForest", "MODISTools",
+  "httr", "jsonlite", "dplyr", "ggplot2",
+  "rmarkdown", "lubridate", "exactextractr",
+  "scales", "tidyr", "knitr", "readr"
+))
+```
+
+---
+
+## Workflow complet
+
+### Étape 1 — Import des données parcellaires
+
+```{r step1}
+library(cropYieldForest)
+
+# Depuis un CSV avec coordonnées lon/lat
+fields <- import_field_data(
+  path      = system.file("field_data/parcelles_gharb.csv",
+                          package = "cropYieldForest"),
+  yield_col = "yield",
+  crop_col  = "crop",
+  date_col  = "date"
+)
+
+head(fields$dataframe)
+# field_id     crop       date yield  lon    lat  soil_texture
+# F001     wheat 2022-06-15   4.2 -6.342 34.812 loam
+# F002     wheat 2022-06-20   3.8 -6.871 34.102 clay_loam
+
+nrow(fields$sf_object)   # 20 parcelles
+```
+
+### Étape 2 — Import des données météo (Open-Meteo / fichier local)
+
+```{r step2}
+# Option A : téléchargement automatique ERA5 (sans clé API)
+meteo <- import_weather_data(
+  lat        = 34.5,
+  lon        = -6.2,
+  start_date = "2022-01-01",
+  end_date   = "2022-12-31",
+  aggregate  = "monthly"
+)
+
+# Option B : depuis le fichier local fourni dans le package
+meteo <- import_weather_data(
+  local_file = system.file("weather_data/meteo_gharb_2022.csv",
+                           package = "cropYieldForest"),
+  aggregate  = "monthly"
+)
+
+head(meteo)
+# date  temp_mean precip_sum humidity_mean radiation_sum
+# 2022-01-01    10.367      5.833         77.600         9.300
+```
+
+### Étape 3 — Téléchargement MODIS (NDVI/EVI)
+
+```{r step3}
+# Via MODISTools (sans authentification)
+veg <- download_sentinel(
+  lat        = 34.5,
+  lon        = -6.2,
+  start_date = "2022-01-01",
+  end_date   = "2022-12-31",
+  km_lr      = 30,
+  km_ab      = 30,
+  out_dir    = "outputs/"
+)
+
+# Résultat
+class(veg$ndvi)   # SpatRaster
+terra::nlyr(veg$ndvi)   # nombre de dates
+
+# Ou depuis Sentinel-2 local (bandes téléchargées sur Copernicus Hub)
+veg <- download_sentinel(
+  sentinel_dir = "inst/sentinel_data/T29SPP_20220601T105021/"
+)
+```
+
+### Étape 4 — Calcul des indices de végétation
+
+```{r step4}
+# NDVI seul (depuis bandes Sentinel-2)
+# ndvi <- calc_ndvi(nir = veg$nir, red = veg$red)
+
+# Tous les indices (NDVI, SAVI, GNDVI)
+if (!is.null(veg$nir)) {
+  indices <- calc_simple_indices(
+    nir   = veg$nir,
+    red   = veg$red,
+    green = veg$green
+  )
+  terra::plot(indices)
+}
+```
+
+### Étape 5 — Extraction des features par parcelle
+
+```{r step5}
+features <- extract_features(
+  fields        = fields$sf_object,
+  ndvi_stack    = veg$ndvi,
+  weather_df    = meteo,
+  method        = "exact"     # exactextractr pour plus de précision
+)
+
+dim(features)    # 20 parcelles × N variables
+head(features[, 1:8])
+```
+
+### Étape 6 — Prétraitement pour le Machine Learning
+
+```{r step6}
+data_ml <- preprocess_data(
+  features    = features,
+  target      = "yield",
+  exclude_cols = c("field_id", "date", "crop"),
+  test_ratio  = 0.25,
+  seed        = 42
+)
+
+cat("Train :", data_ml$n_train, "parcelles\n")
+cat("Test  :", data_ml$n_test,  "parcelles\n")
+cat("Variables :", length(data_ml$features_used), "\n")
+```
+
+### Étape 7 — Entraînement du modèle Random Forest
+
+```{r step7}
+model <- train_rf_model(
+  data_ml      = data_ml,
+  target       = "yield",
+  ntree_values = c(100, 300, 500),
+  importance   = TRUE,
+  seed         = 42
+)
+
+# Résultats
+cat("Meilleur ntree :", model$best_ntree, "\n")
+cat("RMSE test :", round(model$test_metrics$RMSE, 3), "t/ha\n")
+cat("R²   test :", round(model$test_metrics$R2,   3), "\n")
+cat("MAE  test :", round(model$test_metrics$MAE,  3), "t/ha\n")
+```
+
+### Étape 8 — Évaluation du modèle
+
+```{r step8}
+eval_result <- evaluate_model(
+  model_result = model,
+  test_data    = data_ml$test,
+  target       = "yield",
+  show_plots   = TRUE,
+  out_dir      = "outputs/"
+)
+
+eval_result$performance
+#    RMSE    R2   MAE
+# 1  0.38  0.89  0.29
+```
+
+### Étape 9 — Prédiction spatiale du rendement
+
+```{r step9}
+yield_map <- predict_yield_map(
+  model_result  = model,
+  ndvi_stack    = veg$ndvi,
+  weather_df    = meteo,
+  features_used = data_ml$features_used,
+  out_dir       = "outputs/"
+)
+
+terra::global(yield_map, "mean", na.rm = TRUE)
+#       mean
+# yield_predicted_t_ha  4.23
+```
+
+### Étape 10 — Cartographie
+
+```{r step10}
+plot_yield_map(
+  yield_rast    = yield_map,
+  fields        = fields$sf_object,
+  low_threshold = 3.0,
+  out_dir       = "outputs/maps/",
+  format        = "png"
+)
+
+plot_feature_importance(
+  model_result = model,
+  top_n        = 10,
+  out_dir      = "outputs/"
+)
+```
+
+### Étape 11 — Résumé des parcelles
+
+```{r step11}
+summary_df <- summarize_fields(
+  fields        = fields$sf_object,
+  features      = features,
+  group_by_crop = TRUE
+)
+print(summary_df)
+```
+
+### Étape 12 — Rapport automatique
+
+```{r step12}
+report_path <- generate_report(
+  fields        = fields$sf_object,
+  model_result  = model,
+  eval_result   = eval_result,
+  yield_rast    = yield_map,
+  summary_df    = summary_df,
+  output_format = "html",
+  output_dir    = "outputs/"
+)
+
+browseURL(report_path)   # Ouvrir dans le navigateur
+```
+
+---
+
+## Sources des données
+
+| Source | Données | Accès |
+|--------|---------|-------|
+| MODIS MOD13Q1 | NDVI/EVI 250m | `MODISTools::mt_subset()` — gratuit |
+| Open-Meteo ERA5 | Météo historique | API REST — gratuit, sans clé |
+| Copernicus DataSpace | Sentinel-2 L2A | Manuel — compte gratuit |
+| LP DAAC AppEEARS | MODIS toutes bandes | Interface web — compte NASA gratuit |
+
+## Références
+
+- Didan, K. (2015). MOD13Q1 MODIS/Terra Vegetation Indices 16-Day.
+  NASA EOSDIS Land Processes DAAC.
+  https://doi.org/10.5067/MODIS/MOD13Q1.006
+
+- Huete, A.R. (1988). A soil-adjusted vegetation index (SAVI).
+  *Remote Sensing of Environment*, 25(3), 295–309.
+
+- Breiman, L. (2001). Random Forests. *Machine Learning*, 45(1), 5–32.
+
+- Open-Meteo (2023). Historical Weather API (ERA5 réanalyse).
+  https://open-meteo.com/en/docs/historical-weather-api
+
+- Tucker, C.J. (1979). Red and photographic infrared linear combinations
+  for monitoring vegetation. *Remote Sensing of Environment*, 8(2), 127–150.

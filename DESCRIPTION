@@ -1,0 +1,38 @@
+Package: cropYieldForest
+Title: Crop Yield Prediction via Remote Sensing and Machine Learning
+Version: 0.1.0
+Authors@R: 
+    person("Sara", "Elghali", email = "sara.elghali@iav.ac.ma", role = c("aut", "cre"))
+Description: Package R pour prédire le rendement agricole à l'échelle de la parcelle
+    en utilisant des indices de végétation Sentinel-2, des données météorologiques 
+    (MODIS/open-meteo), des informations sur le sol, et un modèle Random Forest.
+    Le package couvre l'ensemble du workflow : import des données, calcul des indices,
+    entraînement du modèle, cartographie du rendement et génération de rapports.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.1
+Depends: 
+    R (>= 4.0.0)
+Imports:
+    terra (>= 1.7.0),
+    sf (>= 1.0.0),
+    randomForest (>= 4.7.0),
+    MODISTools (>= 1.1.3),
+    httr (>= 1.4.0),
+    jsonlite (>= 1.8.0),
+    dplyr (>= 1.1.0),
+    ggplot2 (>= 3.4.0),
+    rmarkdown (>= 2.20),
+    readr (>= 2.1.0),
+    lubridate (>= 1.9.0),
+    exactextractr (>= 0.9.0),
+    scales (>= 1.2.0),
+    tidyr (>= 1.3.0),
+    knitr (>= 1.40)
+Suggests:
+    testthat (>= 3.0.0),
+    devtools
+VignetteBuilder: knitr
+URL: https://github.com/votreusername/cropYieldForest
+BugReports: https://github.com/votreusername/cropYieldForest/issues

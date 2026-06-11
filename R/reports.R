@@ -28,14 +28,14 @@ summarize_fields <- function(fields,
                              features      = NULL,
                              target        = "yield",
                              group_by_crop = TRUE) {
-
+  
   # Extraction du data.frame
   if (inherits(fields, "sf")) {
     df <- sf::st_drop_geometry(fields)
   } else {
     df <- fields
   }
-
+  
   # Jointure des features si fournis
   if (!is.null(features)) {
     common_id <- intersect(names(df), names(features))
@@ -46,11 +46,11 @@ summarize_fields <- function(fields,
       df <- cbind(df, features[, !names(features) %in% names(df), drop = FALSE])
     }
   }
-
+  
   if (!target %in% names(df)) {
     stop("Colonne cible '", target, "' introuvable.")
   }
-
+  
   # ── Résumé global ─────────────────────────────────────────────────────────────
   global_stats <- data.frame(
     group       = "Toutes cultures",
@@ -61,14 +61,14 @@ summarize_fields <- function(fields,
     yield_max   = round(max(df[[target]], na.rm = TRUE), 3),
     stringsAsFactors = FALSE
   )
-
+  
   if ("ndvi_mean" %in% names(df)) {
     global_stats$ndvi_mean <- round(mean(df$ndvi_mean, na.rm = TRUE), 4)
   }
-
+  
   # ── Résumé par culture ────────────────────────────────────────────────────────
   result_list <- list(global_stats)
-
+  
   if (group_by_crop && "crop" %in% names(df)) {
     crops <- unique(df$crop[!is.na(df$crop)])
     for (cr in crops) {
@@ -88,10 +88,10 @@ summarize_fields <- function(fields,
       result_list[[length(result_list) + 1]] <- stats
     }
   }
-
+  
   result <- do.call(rbind, result_list)
   rownames(result) <- NULL
-
+  
   message("Résumé : ", nrow(result), " groupes / ",
           global_stats$n, " parcelles au total")
   result
@@ -137,14 +137,14 @@ generate_report <- function(fields        = NULL,
                             output_format = "html",
                             output_dir    = "outputs/",
                             title         = "Rapport cropYieldForest") {
-
+  
   dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
-
+  
   output_format <- match.arg(output_format, c("html", "pdf"))
   ext           <- if (output_format == "html") "html" else "pdf"
   out_file      <- file.path(normalizePath(output_dir, mustWork = FALSE),
                              paste0("rapport_cropYieldForest.", ext))
-
+  
   # ── Création du fichier Rmd temporaire ───────────────────────────────────────
   rmd_content <- .build_report_rmd(
     title         = title,
@@ -156,12 +156,12 @@ generate_report <- function(fields        = NULL,
     output_format = output_format,
     output_dir    = output_dir
   )
-
+  
   rmd_path <- tempfile(fileext = ".Rmd")
   writeLines(rmd_content, rmd_path)
-
+  
   message("Génération du rapport ", toupper(output_format), " ...")
-
+  
   tryCatch({
     rmarkdown::render(
       input         = rmd_path,
@@ -185,7 +185,7 @@ generate_report <- function(fields        = NULL,
 #' @keywords internal
 .build_report_rmd <- function(title, fields, model_result, eval_result,
                               yield_rast, summary_df, output_format, output_dir) {
-
+  
   # Sérialisation des objets dans l'environnement global du Rmd
   env_setup <- '
 ```{r setup, include=FALSE}
@@ -197,7 +197,7 @@ library(terra)
 library(knitr)
 ```
 '
-
+  
   sections <- c(
     paste0("---\ntitle: \"", title, "\"\n",
            "date: \"`r format(Sys.Date(), '%d %B %Y')`\"\n",
@@ -208,7 +208,7 @@ library(knitr)
              "  pdf_document:\n    toc: true\n",
            "---\n"),
     env_setup,
-
+    
     "## 1. Description des données\n",
     if (!is.null(fields)) {
       df <- if (inherits(fields, "sf")) sf::st_drop_geometry(fields) else fields
@@ -221,7 +221,7 @@ library(knitr)
         '```\n'
       )
     } else "*(Données parcellaires non fournies)*\n",
-
+    
     if (!is.null(summary_df)) {
       paste0(
         "### Résumé des parcelles\n\n",
@@ -229,7 +229,7 @@ library(knitr)
         '  caption = "Statistiques par groupe de culture")\n```\n'
       )
     } else "",
-
+    
     "## 2. Performances du modèle\n",
     if (!is.null(model_result)) {
       m <- model_result$test_metrics
@@ -241,20 +241,22 @@ library(knitr)
         "> Meilleur ntree : **", model_result$best_ntree, "**\n"
       )
     } else "*(Modèle non fourni)*\n",
-
+    
     "## 3. Cartes de rendement\n",
     if (!is.null(yield_rast)) {
-      '```{r fig.cap="Rendement prédit (t/ha)"}\n',
-      'terra::plot(yield_rast, main = "Rendement prédit (t/ha)",\n',
-      '           col = rev(terrain.colors(20)))\n',
-      '```\n'
+      paste0(
+        '```{r fig.cap="Rendement prédit (t/ha)"}\n',
+        'terra::plot(yield_rast, main = "Rendement prédit (t/ha)",\n',
+        '           col = rev(terrain.colors(20)))\n',
+        '```\n'
+      )
     } else {
       img_path <- file.path(output_dir, "yield_map.png")
       if (file.exists(img_path)) {
         paste0('```{r}\nknitr::include_graphics("', img_path, '")\n```\n')
       } else "*(Carte de rendement non disponible)*\n"
     },
-
+    
     "## 4. Importance des variables\n",
     if (!is.null(model_result) && !is.null(model_result$importance)) {
       imp_path <- file.path(output_dir, "feature_importance.png")
@@ -274,7 +276,7 @@ library(knitr)
         )
       }
     } else "*(Importance non disponible)*\n",
-
+    
     "## 5. Interprétation et conclusions\n",
     paste0(
       "Ce rapport a été généré automatiquement par le package **cropYieldForest**.\n\n",
@@ -288,6 +290,6 @@ library(knitr)
       "---\n*Rapport généré le `r format(Sys.time(), '%d/%m/%Y %H:%M')`*\n"
     )
   )
-
+  
   paste(sections, collapse = "\n")
 }

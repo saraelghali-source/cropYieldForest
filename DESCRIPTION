@@ -11,7 +11,6 @@ Description: Package R pour prédire le rendement agricole à l'échelle de la p
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.1
 Depends: 
     R (>= 4.0.0)
 Imports:
@@ -36,3 +35,4 @@ Suggests:
 VignetteBuilder: knitr
 URL: https://github.com/votreusername/cropYieldForest
 BugReports: https://github.com/votreusername/cropYieldForest/issues
+Config/roxygen2/version: 8.0.0

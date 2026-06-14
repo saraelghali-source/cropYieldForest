@@ -518,3 +518,39 @@ devtools::install_github("VOTRE_USERNAME/cropYieldForest")
 ---
 
 *Package développé dans le cadre d'un projet de formation en télédétection agricole.*
+## Workflow complet
+
+```r
+library(cropYieldForest)
+
+# 1. Import des données terrain
+fields <- import_field_data("data/parcelles_maroc.csv")
+
+# 2. Téléchargement Sentinel-2 (NDVI, SAVI)
+indices <- calc_simple_indices(
+  nir = c(0.5, 0.6, 0.7),
+  red = c(0.1, 0.2, 0.2)
+)
+#   NDVI  SAVI
+# 0.667 0.556
+# 0.500 0.417
+# 0.556 0.462
+
+# 3. Préparer les données ML
+split <- preprocess_data(sample_ml_data, train_ratio = 0.8, seed = 42)
+
+# 4. Entraîner Random Forest
+model <- train_rf_model(split$train, ntree = 200)
+
+# 5. Évaluer
+results <- evaluate_model(model, split$test, plot = FALSE)
+print(results$metrics)
+#   Metric   Value
+# 1   RMSE  0.3477
+# 2    MAE  0.2861
+# 3     R2  0.8552
+
+# 6. Générer le rapport
+generate_report(model, results, output_format = "html")
+# → outputs/rapport_cropYieldForest.html
+```

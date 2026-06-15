@@ -172,42 +172,71 @@ download_sentinel <- function(lat          = NULL,
 # ── Fonctions internes ────────────────────────────────────────────────────────
 
 #' Convertit un data.frame MODISTools en SpatRaster multi-dates
+#'
+#' MODISTools (\code{mt_subset}) renvoie une grille de pixels par date, mais
+#' les colonnes \code{longitude}/\code{latitude} sont constantes (égales au
+#' point central demandé) et ne reflètent PAS la position de chaque pixel.
+#' La position réelle de la grille doit être reconstruite à partir des
+#' colonnes \code{xllcorner}, \code{yllcorner}, \code{nrows}, \code{ncols}
+#' et \code{cellsize}, qui définissent une grille régulière en projection
+#' sinusoïdale MODIS (mètres). Les pixels sont numérotés de façon séquentielle
+#' (ligne par ligne, en commençant en haut à gauche) dans la colonne
+#' \code{pixel}.
+#'
 #' @keywords internal
 .modis_to_raster <- function(df, scale_factor = 0.0001) {
-  dates     <- unique(df$calendar_date)
+  dates <- unique(df$calendar_date)
+  
+  # ── Grille MODIS en projection sinusoïdale (mètres) ──────────────────────
+  xll      <- as.numeric(unique(df$xllcorner)[1])
+  yll      <- as.numeric(unique(df$yllcorner)[1])
+  ncols    <- as.integer(unique(df$ncols)[1])
+  nrows    <- as.integer(unique(df$nrows)[1])
+  cellsize <- as.numeric(unique(df$cellsize)[1])
+  
+  crs_modis <- "+proj=sinu +R=6371007.181 +nadgrees=0 +lon_0=0 +x_0=0 +y_0=0 +units=m +no_defs"
+  
+  xmin <- xll
+  xmax <- xll + ncols * cellsize
+  ymin <- yll
+  ymax <- yll + nrows * cellsize
+  
+  ext_global <- terra::ext(xmin, xmax, ymin, ymax)
+  
   rast_list <- vector("list", length(dates))
-  
-  # Calcul de l'étendue globale sur TOUTES les dates pour avoir une grille fixe
-  all_lons <- df$longitude
-  all_lats <- df$latitude
-  
-  lon_min <- min(all_lons) - 0.00225
-  lon_max <- max(all_lons) + 0.00225
-  lat_min <- min(all_lats) - 0.00225
-  lat_max <- max(all_lats) + 0.00225
-  
-  # Sécurité : si extent dégénéré (tous points identiques), on force un buffer
-  if ((lon_max - lon_min) < 0.01) {
-    lon_min <- lon_min - 0.1
-    lon_max <- lon_max + 0.1
-  }
-  if ((lat_max - lat_min) < 0.01) {
-    lat_min <- lat_min - 0.1
-    lat_max <- lat_max + 0.1
-  }
-  
-  ext_global <- terra::ext(lon_min, lon_max, lat_min, lat_max)
   
   for (i in seq_along(dates)) {
     sub <- df[df$calendar_date == dates[i], ]
+    sub <- sub[order(sub$pixel), ]
     
-    pts   <- terra::vect(sub, geom = c("longitude", "latitude"),
-                         crs = "EPSG:4326")
-    r     <- terra::rast(ext_global, resolution = 0.00225, crs = "EPSG:4326")
-    r_val <- terra::rasterize(pts, r, field = "value", fun = "mean")
-    r_val <- r_val * scale_factor
-    names(r_val) <- dates[i]
-    rast_list[[i]] <- r_val
+    vals <- as.numeric(sub$value)
+    
+    # Valeurs nodata MODIS (ex : -3000 pour NDVI/EVI) -> NA avant mise à l'échelle
+    vals[vals <= -2000] <- NA
+    vals <- vals * scale_factor
+    
+    r <- terra::rast(ext_global,
+                     nrows = nrows, ncols = ncols,
+                     crs = crs_modis)
+    
+    # Le champ "pixel" est numéroté ligne par ligne en commençant en haut à
+    # gauche, ce qui correspond exactement à l'ordre attendu par terra::values()
+    terra::values(r) <- vals
+    names(r) <- dates[i]
+    
+    # Reprojection en WGS84 (lon/lat) pour usage avec ggplot / alignement
+    # avec les autres rasters du projet (ex: yield_map)
+    r <- terra::project(r, "EPSG:4326")
+    
+    rast_list[[i]] <- r
+  }
+  
+  # Aligner tous les rasters de dates sur la même grille (référence = premier)
+  ref <- rast_list[[1]]
+  if (length(rast_list) > 1) {
+    rast_list[-1] <- lapply(rast_list[-1], function(r) {
+      terra::resample(r, ref, method = "near")
+    })
   }
   
   terra::rast(rast_list)

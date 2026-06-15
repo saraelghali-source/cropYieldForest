@@ -36,3 +36,4 @@ VignetteBuilder: knitr
 URL: https://github.com/votreusername/cropYieldForest
 BugReports: https://github.com/votreusername/cropYieldForest/issues
 Config/roxygen2/version: 8.0.0
+LazyData: true

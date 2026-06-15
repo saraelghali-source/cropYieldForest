@@ -2,13 +2,21 @@
 .Rhistory
 .RData
 .Ruserdata
-outputs/
-*.tif
+
+# Garder outputs/ mais ignorer les gros fichiers raster
+outputs/*.tif
+outputs/*.zip
+
+# Données spatiales lourdes
 *.shp
 *.dbf
 *.prj
 *.shx
+
+# Sentinel brut (trop lourd)
 inst/sentinel_data/
+
+# Divers
 *.zip
 .httr-oauth
 .DS_Store

@@ -571,3 +571,17 @@ generate_report(model, results, output_format = "html")
 ## 📄 Métriques du modèle
 
 Voir [`outputs/model_metrics.csv`](outputs/model_metrics.csv)
+
+## Résultats et visualisations
+
+![Observations vs Prédictions](outputs/obs_vs_pred.png)
+
+![Résidus](outputs/residuals.png)
+
+![Importance des variables](outputs/feature_importance.png)
+
+## Cartes des rendements
+
+![Carte des rendements](outputs/maps/yield_map.png)
+
+![Carte zones à faible rendement](outputs/maps/low_yield_map.png)

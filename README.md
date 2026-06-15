@@ -585,3 +585,9 @@ Voir [`outputs/model_metrics.csv`](outputs/model_metrics.csv)
 ![Carte des rendements](outputs/maps/yield_map.png)
 
 ![Carte zones à faible rendement](outputs/maps/low_yield_map.png)
+
+## Dashboard NDVI & Rendement
+
+![NDVI MODIS](outputs/maps/ndvi_map.png)
+
+![Carte de rendement](outputs/maps/yield_map.png)
